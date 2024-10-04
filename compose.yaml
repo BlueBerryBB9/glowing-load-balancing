@@ -1,0 +1,98 @@
+networks:
+  monitoring:
+    driver: bridge
+
+services:
+  haproxy:
+    image: haproxy:latest
+    container_name: haproxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "1936:1936"  # Interface statistique de HAProxy
+    networks:
+      - monitoring
+    volumes:
+      - ./haproxy/selected/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    environment:
+      - RESOLVERS_DNS=127.0.0.11
+    privileged: true
+    command: haproxy -f /usr/local/etc/haproxy/haproxy.cfg
+
+  # 3 basic web servers
+  nginx1:
+    image: nginx:latest
+    container_name: nginx1
+    restart: unless-stopped
+    networks:
+      - monitoring
+    volumes:
+      - ./nginx_html/1:/usr/share/nginx/html
+
+  nginx2:
+    image: nginx:latest
+    container_name: nginx2
+    restart: unless-stopped
+    networks:
+      - monitoring
+    volumes:
+      - ./nginx_html/2:/usr/share/nginx/html
+
+  nginx3:
+    image: nginx:latest
+    container_name: nginx3
+    restart: unless-stopped
+    networks:
+      - monitoring
+    volumes:
+      - ./nginx_html/3:/usr/share/nginx/html
+
+  prometheus: 
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml # Config file for Prometheus
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml" 
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - 9090:9090 # Prometheus web UI
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning # Provisioning for Grafana
+    ports:
+      - 3000:3000 # Grafana web UI
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin # Admin username
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Admin password
+    networks:
+      - monitoring
+
+  haproxy_reporter:
+    image: prom/haproxy-exporter:latest  # Utiliser l'image prom/haproxy-exporter
+    container_name: haproxy_reporter
+    restart: unless-stopped
+    ports:
+      - "9101:9101"  # Port pour le rapporteur
+    networks:
+      - monitoring
+    environment:
+      - STATISTICS_USERNAME=admin
+      - STATISTICS_PASSWORD=admin
+      - STATISTICS_PORT=1936  # Port de l'interface statistique de HAProxy
+      - STATISTICS_URI=http://haproxy:1936/stats
+    command:
+      - "--haproxy.scrape-uri=http://haproxy:1936/stats"
+
+volumes:
+  prometheus_data:
+  grafana_data:
